@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A simple hackathon judging dashboard with automatic totals and team rankings.">
+  <title>Hackathon Judging Dashboard</title>
+  <style>
+    :root {
+      --bg: #f4f6fb; --surface: #fff; --ink: #182238; --muted: #68758b;
+      --line: #e3e8f1; --primary: #3157d5; --primary-light: #edf1ff;
+      --green: #087f5b; --red: #b42318; --shadow: 0 8px 28px rgba(24,34,56,.06);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, Arial, sans-serif; }
+    header { background: #15213b; color: white; padding: 28px 20px; }
+    .header-inner, main { width: min(1160px, 100% - 36px); margin: auto; }
+    header h1 { margin: 0; font-size: clamp(23px, 4vw, 32px); letter-spacing: -.5px; }
+    header p { color: #cbd5e1; margin: 6px 0 0; }
+    main { padding: 24px 0 40px; }
+    .layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; align-items: start; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
+    h2 { margin: 0 0 5px; font-size: 19px; }
+    .sub { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+    label { display: block; font-size: 13px; font-weight: 700; margin: 13px 0 5px; }
+    input, select { width: 100%; border: 1px solid #cbd5e1; border-radius: 9px; padding: 10px 11px; background: white; color: var(--ink); font: inherit; }
+    input:focus, select:focus { outline: 3px solid #dbe5ff; border-color: var(--primary); }
+    .criterion { display: grid; grid-template-columns: 1fr 92px; align-items: center; gap: 12px; margin: 14px 0; }
+    .criterion label { margin: 0; }
+    .criterion small { display: block; color: var(--muted); font-weight: 400; }
+    .total-box { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px; margin-top: 18px; border-radius: 11px; background: var(--primary-light); }
+    .total-box span { color: #40517e; font-size: 13px; font-weight: 700; }
+    .total-box strong { color: var(--primary); font-size: 22px; }
+    button { border: 0; border-radius: 9px; padding: 10px 13px; cursor: pointer; font: inherit; font-weight: 700; }
+    button:focus-visible { outline: 3px solid #9db5ff; outline-offset: 2px; }
+    .primary { width: 100%; margin-top: 15px; color: white; background: var(--primary); }
+    .soft { color: var(--primary); background: var(--primary-light); }
+    .danger { color: var(--red); background: #fff0ef; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+    .stat { border: 1px solid var(--line); border-radius: 11px; background: #fafbfe; padding: 12px; }
+    .stat strong { display: block; font-size: 22px; }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; min-width: 490px; border-collapse: collapse; }
+    th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid var(--line); font-size: 13px; }
+    th { background: #fafbfe; color: var(--muted); font-size: 12px; }
+    .rank { color: var(--primary); font-weight: 800; }
+    .status { min-height: 22px; color: var(--green); font-size: 13px; margin-top: 8px; }
+    .empty { padding: 25px; text-align: center; color: var(--muted); }
+    .footnote { color: var(--muted); font-size: 12px; margin: 14px 0 0; }
+    @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
+    @media (max-width: 460px) { .stats { grid-template-columns: 1fr 1fr; } .card { padding: 16px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>Hackathon Judging Dashboard</h1>
+      <p>Evaluate projects consistently and view the leaderboard instantly.</p>
+    </div>
+  </header>
+
+  <main>
+    <div class="layout">
+      <section class="card" aria-labelledby="form-title">
+        <h2 id="form-title">Submit a score</h2>
+        <p class="sub">Choose a team, enter the judge details, and score each criterion.</p>
+
+        <label for="team">Team</label>
+        <select id="team"></select>
+
+        <label for="judge">Judge name or ID</label>
+        <input id="judge" type="text" placeholder="e.g. Judge 1" maxlength="60">
+
+        <div id="criteria-fields"></div>
+
+        <div class="total-box">
+          <span>Calculated total</span>
+          <strong id="live-total">0 / 100</strong>
+        </div>
+        <button class="primary" id="save-score">Save evaluation</button>
+        <div class="status" id="status" role="status" aria-live="polite"></div>
+        <p class="footnote">This GitHub Pages demo stores scores in this browser. It does not sync scores between different devices.</p>
+      </section>
+
+      <section class="card" aria-labelledby="board-title">
+        <h2 id="board-title">Leaderboard</h2>
+        <p class="sub">Teams are ranked by the average of their submitted evaluations.</p>
+
+        <div class="stats">
+          <div class="stat"><strong id="team-count">40</strong><span>Teams listed</span></div>
+          <div class="stat"><strong id="evaluated-count">0</strong><span>Teams evaluated</span></div>
+          <div class="stat"><strong id="highest-score">—</strong><span>Highest average</span></div>
+        </div>
+
+        <div class="toolbar">
+          <button class="soft" id="export-csv">Download CSV</button>
+          <button class="soft" id="add-demo">Load demo scores</button>
+          <button class="danger" id="clear-scores">Clear scores</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Rank</th><th>Team</th><th>Average score</th><th>Judges</th></tr></thead>
+            <tbody id="leaderboard">
+              <tr><td class="empty" colspan="4">No evaluations yet. Add the first score.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">If two teams have the same average, they share the same rank. Teams without scores appear at the bottom.</p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    // Change the team count here if your event has a different number of teams.
+    const TEAM_COUNT = 40;
+    const STORAGE_KEY = "hackathon-judging-dashboard-v1";
+
+    // Change the maximum marks here to customize your judging rubric.
+    const CRITERIA = [
+      { name: "Innovation", max: 20 },
+      { name: "Technical implementation", max: 30 },
+      { name: "Problem-solving", max: 20 },
+      { name: "Presentation", max: 15 },
+      { name: "Practical impact", max: 15 }
+    ];
+
+    const teams = Array.from({ length: TEAM_COUNT }, (_, index) =>
+      `Team ${String(index + 1).padStart(2, "0")}`
+    );
+
+    const $ = (id) => document.getElementById(id);
+    let evaluations = loadEvaluations();
+
+    function loadEvaluations() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        return Array.isArray(saved) ? saved : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveToBrowser() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(evaluations));
+    }
+
+    function buildForm() {
+      $("team").innerHTML = teams.map(team =>
+        `<option value="${team}">${team}</option>`
+      ).join("");
+
+      $("criteria-fields").innerHTML = CRITERIA.map((criterion, index) => `
+        <div class="criterion">
+          <label for="score-${index}">
+            ${criterion.name}
+            <small>Maximum ${criterion.max} marks</small>
+          </label>
+          <input id="score-${index}" type="number" min="0"
+            max="${criterion.max}" step="1" value="0" inputmode="numeric">
+        </div>
+      `).join("");
+
+      CRITERIA.forEach((_, index) => {
+        $(`score-${index}`).addEventListener("input", updateLiveTotal);
+      });
+      updateLiveTotal();
+      renderLeaderboard();
+    }
+
+    function getEnteredScores() {
+      return CRITERIA.map((criterion, index) => {
+        const field = $(`score-${index}`);
+        const value = Number(field.value);
+        if (field.value.trim() === "" || !Number.isInteger(value) ||
+            value < 0 || value > criterion.max) {
+          throw new Error(`${criterion.name}: enter a whole number from 0 to ${criterion.max}.`);
+        }
+        return value;
+      });
+    }
+
+    function updateLiveTotal() {
+      const values = CRITERIA.map((criterion, index) => {
+        const value = Number($(`score-${index}`).value);
+        return Number.isFinite(value) ? Math.max(0, Math.min(criterion.max, value)) : 0;
+      });
+      const maxTotal = CRITERIA.reduce((sum, criterion) => sum + criterion.max, 0);
+      $("live-total").textContent = `${values.reduce((sum, value) => sum + value, 0)} / ${maxTotal}`;
+    }
+
+    function renderLeaderboard() {
+      const summary = teams.map(team => {
+        const teamEvaluations = evaluations.filter(item => item.team === team);
+        const average = teamEvaluations.length
+          ? teamEvaluations.reduce((sum, item) => sum + item.total, 0) / teamEvaluations.length
+          : null;
+        return { team, count: teamEvaluations.length, average };
+      }).sort((a, b) => {
+        if (a.average === null && b.average === null) return a.team.localeCompare(b.team);
+        if (a.average === null) return 1;
+        if (b.average === null) return -1;
+        return b.average - a.average || a.team.localeCompare(b.team);
+      });
+
+      let currentRank = 0;
+      let previousAverage = null;
+      $("leaderboard").innerHTML = summary.map((item, index) => {
+        if (item.average !== null) {
+          if (previousAverage === null || item.average !== previousAverage) currentRank = index + 1;
+          previousAverage = item.average;
+        }
+        const rank = item.average === null ? "—" : currentRank;
+        const average = item.average === null ? "—" : `${item.average.toFixed(2)} / 100`;
+        return `<tr>
+          <td class="rank">${rank}</td>
+          <td>${item.team}</td>
+          <td>${average}</td>
+          <td>${item.count}</td>
+        </tr>`;
+      }).join("");
+
+      const completed = summary.filter(item => item.average !== null);
+      $("team-count").textContent = TEAM_COUNT;
+      $("evaluated-count").textContent = completed.length;
+      $("highest-score").textContent = completed.length ? completed[0].average.toFixed(2) : "—";
+    }
+
+    $("save-score").addEventListener("click", () => {
+      try {
+        const judge = $("judge").value.trim();
+        if (!judge) throw new Error("Enter the judge name or ID first.");
+
+        const scores = getEnteredScores();
+        const team = $("team").value;
+        const total = scores.reduce((sum, value) => sum + value, 0);
+
+        evaluations.push({
+          team,
+          judge,
+          scores,
+          total,
+          submittedAt: new Date().toISOString()
+        });
+
+        saveToBrowser();
+        renderLeaderboard();
+        $("status").textContent = `Saved ${team}: ${total}/100.`;
+      } catch (error) {
+        $("status").textContent = error.message;
+      }
+    });
+
+    $("export-csv").addEventListener("click", () => {
+      const headings = ["Team", "Judge", ...CRITERIA.map(item => item.name), "Total", "Submitted at"];
+      const rows = evaluations.map(item => [
+        item.team, item.judge, ...item.scores, item.total, item.submittedAt
+      ]);
+      const csv = [headings, ...rows].map(row =>
+        row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")
+      ).join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "hackathon-evaluations.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+
+    $("add-demo").addEventListener("click", () => {
+      const demo = [
+        ["Team 01", "Judge 1", [18, 27, 18, 13, 14]],
+        ["Team 01", "Judge 2", [17, 28, 17, 14, 13]],
+        ["Team 02", "Judge 1", [16, 25, 17, 12, 13]],
+        ["Team 03", "Judge 1", [19, 24, 16, 13, 14]]
+      ];
+      demo.forEach(([team, judge, scores]) => {
+        evaluations.push({
+          team, judge, scores,
+          total: scores.reduce((sum, value) => sum + value, 0),
+          submittedAt: new Date().toISOString()
+        });
+      });
+      saveToBrowser();
+      renderLeaderboard();
+      $("status").textContent = "Demo scores added. You can now test the leaderboard.";
+    });
+
+    $("clear-scores").addEventListener("click", () => {
+      if (!confirm("Delete all saved evaluations from this browser?")) return;
+      evaluations = [];
+      localStorage.removeItem(STORAGE_KEY);
+      renderLeaderboard();
+      $("status").textContent = "All evaluations cleared.";
+    });
+
+    buildForm();
+  </script>
+</body>
+</html>
